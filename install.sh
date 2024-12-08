@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Version 1.0.3 - Auto SSL Certificate, Fail2ban and BBR Installation
+# Version 1.0.4 - Fully Automated Installation
 # Changes:
 # - Added automatic domain input at start
-# - Integrated SSL certificate installation
+# - Fully automated SSL certificate installation
 # - Added automatic Fail2ban and IP Limit setup
 # - Added automatic BBR installation
 # - Automated panel configuration
@@ -209,19 +209,13 @@ config_after_install() {
     /usr/local/x-ui/x-ui migrate
 }
 
-# Добавляем новую функцию для установки SSL
-install_ssl() {
-    local domain=$1
-    local webport=80  # Используем порт 80 для проверки домена
+# Функция для автоматической установки SSL сертификата
+auto_ssl_cert_issue() {
+    local webport=80
     
     # Устанавливаем acme.sh если его нет
     if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
-        echo -e "${yellow}Installing acme.sh...${plain}"
         curl -s https://get.acme.sh | sh
-        if [ $? -ne 0 ]; then
-            echo -e "${red}Failed to install acme.sh${plain}"
-            return 1
-        fi
     fi
 
     # Устанавливаем socat
@@ -238,13 +232,7 @@ install_ssl() {
     arch | manjaro | parch)
         pacman -Sy --noconfirm socat
         ;;
-    *)
-        echo -e "${red}Unsupported operating system for automatic SSL installation${plain}"
-        return 1
-        ;;
     esac
-
-    echo -e "${yellow}Starting SSL certificate installation for domain: ${domain}${plain}"
 
     # Создаем директорию для сертификатов
     certPath="/root/cert/${domain}"
@@ -258,25 +246,16 @@ install_ssl() {
     # Получаем сертификат
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
     ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport ${webport}
-    if [ $? -ne 0 ]; then
-        echo -e "${red}Failed to issue SSL certificate${plain}"
-        return 1
-    fi
 
     # Устанавливаем сертификат
     ~/.acme.sh/acme.sh --installcert -d ${domain} \
         --key-file /root/cert/${domain}/privkey.pem \
         --fullchain-file /root/cert/${domain}/fullchain.pem
 
-    if [ $? -ne 0 ]; then
-        echo -e "${red}Failed to install SSL certificate${plain}"
-        return 1
-    fi
-
     # Включаем автообновление
     ~/.acme.sh/acme.sh --upgrade --auto-upgrade
 
-    # Устанавливаем сертификат для панели
+    # Автоматически устанавливаем сертификат для панели
     local webCertFile="/root/cert/${domain}/fullchain.pem"
     local webKeyFile="/root/cert/${domain}/privkey.pem"
 
@@ -286,9 +265,6 @@ install_ssl() {
         echo -e "${green}Certificate path: ${webCertFile}${plain}"
         echo -e "${green}Private key path: ${webKeyFile}${plain}"
         systemctl restart x-ui
-    else
-        echo -e "${red}Certificate files not found${plain}"
-        return 1
     fi
 }
 
@@ -356,10 +332,10 @@ install_x-ui() {
     systemctl enable x-ui
     systemctl start x-ui
     
-    # Устанавливаем SSL сертификат используя существующую функцию
+    # Устанавливаем SSL сертификат используя нашу автоматическую функцию
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     source /usr/bin/x-ui
-    ssl_cert_issue
+    auto_ssl_cert_issue
 
     # Автоматическая установка Fail2ban и IP Limit
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
