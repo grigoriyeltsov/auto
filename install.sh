@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# Version 1.0.1 - Auto SSL Certificate Installation
+# Version 1.0.3 - Auto SSL Certificate, Fail2ban and BBR Installation
 # Changes:
 # - Added automatic domain input at start
 # - Integrated SSL certificate installation
+# - Added automatic Fail2ban and IP Limit setup
+# - Added automatic BBR installation
 # - Automated panel configuration
 
 red='\033[0;31m'
@@ -358,9 +360,16 @@ install_x-ui() {
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     source /usr/bin/x-ui
     ssl_cert_issue
+
+    # Автоматическая установка Fail2ban и IP Limit
+    echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
+    iplimit_main 1
+
+    # Автоматическая установка BBR
+    echo -e "${yellow}Starting BBR installation...${plain}"
+    enable_bbr
     
     echo -e "${green}x-ui ${tag_version}${plain} installation finished, it is running now..."
-    echo -e ""
     echo -e "x-ui control menu usages: "
     echo -e "----------------------------------------------"
     echo -e "SUBCOMMANDS:"
