@@ -520,6 +520,59 @@ enable_bbr() {
     fi
 }
 
+configure_inbounds() {
+    local domain="$1"
+    local port="$2"
+    
+    # Generate random subscription path
+    local sub_path=$(gen_random_string 15)
+    
+    # Wait for x-ui to start and create database
+    sleep 5
+    
+    # Default inbounds configuration
+    sqlite3 /etc/x-ui/x-ui.db << EOF
+    INSERT INTO inbounds (user_id, up, down, total, remark, enable, expiry_time, listen, port, protocol, settings, stream_settings, tag, sniffing)
+    VALUES (
+        1,                          -- user_id
+        0,                          -- up
+        0,                          -- down
+        0,                          -- total
+        'flipik',                   -- remark
+        1,                          -- enable
+        0,                          -- expiry_time (0 = never)
+        '',                         -- listen (empty = all interfaces)
+        ${port},                    -- port
+        'vless',                    -- protocol
+        '{"clients":[{"id":"d4b65831-2e27-4c90-8d0d-5a26453dab3a","email":"default@example.com","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[]}',  -- settings
+        '{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"google.com:443","serverNames":["google.com","www.google.com"],"privateKey":"yKr5YV3GfyvD0mHhQQ5QzPNeMhpDGtqKQnS4h_ZrLHE","minClientVer":"","maxClientVer":"","maxTimeDiff":0,"shortIds":["6ba85179e30d4fc2"],"settings":{"publicKey":"8fT0lfuL6f5z1dqSXEYfgR3F0uBaKZw0U5tvlEFxEWY","fingerprint":"chrome","serverName":"google.com","spiderX":""}},"tcpSettings":{"acceptProxyProtocol":false},"sockopt":{"dialerProxy":"","tcpFastOpen":false,"tcpKeepAliveIdle":0,"tcpNoDelay":false,"mark":0,"domainStrategy":"AsIs","connectTimeout":0,"tcpKeepAliveInterval":0,"tcpKeepAliveCount":0,"tcpUserTimeout":0,"interface":"","v6Only":false}}',  -- stream_settings
+        'vless-in',                -- tag
+        '{"enabled":true,"destOverride":["http","tls"]}'  -- sniffing
+    );
+EOF
+
+    # Create subscription
+    sqlite3 /etc/x-ui/x-ui.db << EOF
+    INSERT INTO subscriptions (user_id, name, host, port, path, enable, expire_time)
+    VALUES (
+        1,                          -- user_id
+        'Default Sub',              -- name
+        '${domain}',                -- host
+        ${port},                    -- port
+        '/${sub_path}',             -- path
+        1,                          -- enable
+        0                          -- expire_time (0 = never)
+    );
+EOF
+
+    # Restart x-ui to apply changes
+    systemctl restart x-ui
+    sleep 5
+    
+    # Save subscription info
+    echo -e "${green}Subscription URL: https://${domain}:${port}/${sub_path}${plain}"
+}
+
 install_x-ui() {
     cd /usr/local/
 
@@ -592,11 +645,21 @@ install_x-ui() {
         echo -e "${green}SSL certificate installed successfully${plain}"
         FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
         
+        # Stop x-ui before setting certificate
+        systemctl stop x-ui
+        
         # Set certificate for panel
         /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
         
-        # Restart panel to apply SSL
-        systemctl restart x-ui
+        # Start panel to apply SSL
+        systemctl start x-ui
+        
+        # Configure inbounds and subscriptions
+        echo -e "${yellow}Configuring inbounds and subscriptions...${plain}"
+        configure_inbounds "${domain}" "443"
+        
+        # Wait for service to start
+        sleep 5
     else
         echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
         FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
