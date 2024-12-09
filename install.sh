@@ -290,10 +290,19 @@ install_x-ui() {
     # Install SSL certificate directly using the existing function
     ssl_cert_issue
     
+    # Wait a moment for certificate installation
+    sleep 5
+    
     # Check if SSL certificate exists and is valid
-    if [ -f "/root/cert/${domain}/fullchain.pem" ]; then
+    if [ -f "/root/cert/${domain}/fullchain.pem" ] && [ -f "/root/cert/${domain}/privkey.pem" ]; then
         echo -e "${green}SSL certificate installed successfully${plain}"
         FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+        
+        # Set certificate for panel
+        /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
+        
+        # Restart panel to apply SSL
+        systemctl restart x-ui
     else
         echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
         FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
@@ -305,6 +314,7 @@ install_x-ui() {
     echo -e "${yellow}Starting BBR installation...${plain}"
     enable_bbr
     
+    # Final output with correct protocol
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
     echo -e "${green}Username: ${FINAL_USERNAME}${plain}"
