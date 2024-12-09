@@ -369,14 +369,15 @@ create_iplimit_jails() {
 
     cat << EOF > /etc/fail2ban/jail.d/3x-ipl.conf
 [3x-ipl]
-enabled=true
-backend=auto
-filter=3x-ipl
-action = %(known/action)s[name=%(__name__)s, protocol="%(protocol)s", chain="%(chain)s"]
-logpath=${iplimit_log_path}
-maxretry=2
-findtime=32
-bantime=${bantime}m
+enabled = true
+filter = 3x-ipl
+logpath = ${iplimit_log_path}
+maxretry = 2
+findtime = 32
+bantime = ${bantime}m
+port = any
+banaction = 3x-ipl
+protocol = tcp
 EOF
 
     cat << EOF > /etc/fail2ban/filter.d/3x-ipl.conf
@@ -391,21 +392,21 @@ EOF
 before = iptables-common.conf
 
 [Definition]
-actionstart = <iptables> -N f2b-<n>
-              <iptables> -A f2b-<n> -j <returntype>
-              <iptables> -I <chain> -p <protocol> -j f2b-<n>
+actionstart = <iptables> -N f2b-<name>
+              <iptables> -A f2b-<name> -j <returntype>
+              <iptables> -I <chain> -p <protocol> -j f2b-<name>
 
-actionstop = <iptables> -D <chain> -p <protocol> -j f2b-<n>
+actionstop = <iptables> -D <chain> -p <protocol> -j f2b-<name>
              <actionflush>
-             <iptables> -X f2b-<n>
+             <iptables> -X f2b-<name>
 
-actioncheck = <iptables> -n -L <chain> | grep -q 'f2b-<n>[ \t]'
+actioncheck = <iptables> -n -L <chain> | grep -q 'f2b-<name>[ \t]'
 
-actionban = <iptables> -I f2b-<n> 1 -s <ip> -j <blocktype>
+actionban = <iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>
             echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   BAN   [Email] = <F-USER> [IP] = <ip> banned for <bantime> seconds." >> ${iplimit_banned_log_path}
 
-actionunban = <iptables> -D f2b-<n> -s <ip> -j <blocktype>
-              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iplimit_banned_log_path}
+actionunban = <iptables> -D f2b-<name> -s <ip> -j <blocktype>
+              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iptimit_banned_log_path}
 
 [Init]
 # Use default settings from iptables-common.conf
