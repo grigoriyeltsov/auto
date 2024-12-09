@@ -171,6 +171,12 @@ config_after_install() {
 
             /usr/local/x-ui/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
 
+            # Store these values in global variables for later use
+            FINAL_USERNAME="${config_username}"
+            FINAL_PASSWORD="${config_password}"
+            FINAL_PORT="${config_port}"
+            FINAL_PATH="${config_webBasePath}"
+
             echo -e "This is a fresh installation, generating random login info for security concerns:"
             echo -e "###############################################"
             echo -e "${green}Username: ${config_username}${plain}"
@@ -283,9 +289,9 @@ install_x-ui() {
     bash /usr/bin/x-ui bbr
     
     echo -e "${green}Installation completed successfully!${plain}"
-    echo -e "${green}Panel is running at https://${domain}:${config_port}/${config_webBasePath}${plain}"
-    echo -e "${green}Username: ${config_username}${plain}"
-    echo -e "${green}Password: ${config_password}${plain}"
+    echo -e "${green}Panel is running at https://${domain}:${FINAL_PORT}/${FINAL_PATH}${plain}"
+    echo -e "${green}Username: ${FINAL_USERNAME}${plain}"
+    echo -e "${green}Password: ${FINAL_PASSWORD}${plain}"
     echo -e "${yellow}If you forgot your login info, you can type 'x-ui settings' to check${plain}"
 }
 
