@@ -12,6 +12,43 @@ green='\033[0;32m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
+# Log folder
+log_folder="${XUI_LOG_FOLDER:=/var/log}"
+iplimit_log_path="${log_folder}/3xipl.log"
+iplimit_banned_log_path="${log_folder}/3xipl-banned.log"
+
+# Logging functions
+LOGI() {
+    echo -e "${green}[INFO] $* ${plain}"
+}
+
+LOGD() {
+    echo -e "${yellow}[DEBUG] $* ${plain}"
+}
+
+LOGE() {
+    echo -e "${red}[ERROR] $* ${plain}"
+}
+
+# Check release
+if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    release=$ID
+    os_version=$VERSION_ID
+elif [[ -f /usr/lib/os-release ]]; then
+    . /usr/lib/os-release
+    release=$ID
+    os_version=$VERSION_ID
+else
+    echo "Could not detect OS"
+    exit 1
+fi
+
+# Convert version string to number for version comparison
+if [ "$release" == "debian" ]; then
+    os_version=$(echo "$os_version" | cut -d'.' -f1)
+fi
+
 # Запрашиваем домен в самом начале
 read -p "Please enter your domain name for SSL certificate: " domain
 if [[ -z "$domain" ]]; then
@@ -315,6 +352,70 @@ ssl_cert_issue() {
         ls -lah cert/*
         chmod 755 $certPath/*
     fi
+}
+
+# Add before install_iplimit function
+create_iplimit_jails() {
+    # Use default bantime if not passed => 15 minutes
+    local bantime="${1:-15}"
+
+    # Uncomment 'allowipv6 = auto' in fail2ban.conf
+    sed -i 's/#allowipv6 = auto/allowipv6 = auto/g' /etc/fail2ban/fail2ban.conf
+
+    # On Debian 12+ fail2ban's default backend should be changed to systemd
+    if [[  "${release}" == "debian" && ${os_version} -ge 12 ]]; then
+        sed -i '0,/action =/s/backend = auto/backend = systemd/' /etc/fail2ban/jail.conf
+    fi
+
+    cat << EOF > /etc/fail2ban/jail.d/3x-ipl.conf
+[3x-ipl]
+enabled=true
+backend=auto
+filter=3x-ipl
+action = %(known/action)s[name=%(__name__)s, protocol="%(protocol)s", chain="%(chain)s"]
+logpath=${iplimit_log_path}
+maxretry=2
+findtime=32
+bantime=${bantime}m
+EOF
+
+    cat << EOF > /etc/fail2ban/filter.d/3x-ipl.conf
+[Definition]
+datepattern = ^%%Y/%%m/%%d %%H:%%M:%%S
+failregex   = \[LIMIT_IP\]\s*Email\s*=\s*<F-USER>.+</F-USER>\s*\|\|\s*SRC\s*=\s*<ADDR>
+ignoreregex =
+EOF
+
+    cat << EOF > /etc/fail2ban/action.d/3x-ipl.conf
+[INCLUDES]
+before = iptables-common.conf
+
+[Definition]
+actionstart = <iptables> -N f2b-<n>
+              <iptables> -A f2b-<n> -j <returntype>
+              <iptables> -I <chain> -p <protocol> -j f2b-<n>
+
+actionstop = <iptables> -D <chain> -p <protocol> -j f2b-<n>
+             <actionflush>
+             <iptables> -X f2b-<n>
+
+actioncheck = <iptables> -n -L <chain> | grep -q 'f2b-<n>[ \t]'
+
+actionban = <iptables> -I f2b-<n> 1 -s <ip> -j <blocktype>
+            echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   BAN   [Email] = <F-USER> [IP] = <ip> banned for <bantime> seconds." >> ${iplimit_banned_log_path}
+
+actionunban = <iptables> -D f2b-<n> -s <ip> -j <blocktype>
+              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iplimit_banned_log_path}
+
+[Init]
+# Use default settings from iptables-common.conf
+# This will automatically handle both IPv4 and IPv6
+name = default
+protocol = tcp
+chain = INPUT
+EOF
+
+    echo -e "${green}Ip Limit jail files created with a bantime of ${bantime} minutes.${plain}"
 }
 
 install_iplimit() {
