@@ -163,22 +163,22 @@ fi
 install_base() {
     case "${release}" in
     ubuntu | debian | armbian)
-        apt-get update && apt-get upgrade -y && apt-get install -y wget curl tar tzdata cron nano
+        apt-get update && apt-get upgrade -y && apt-get install -y wget curl tar tzdata cron nano python3-systemd
         ;;
     centos | almalinux | rocky | ol)
-        yum -y update && yum install -y -q wget curl tar tzdata
+        yum -y update && yum install -y -q wget curl tar tzdata python3-systemd
         ;;
     fedora | amzn)
-        dnf -y update && dnf install -y -q wget curl tar tzdata
+        dnf -y update && dnf install -y -q wget curl tar tzdata python3-systemd
         ;;
     arch | manjaro | parch)
-        pacman -Syu && pacman -Syu --noconfirm wget curl tar tzdata
+        pacman -Syu && pacman -Syu --noconfirm wget curl tar tzdata python-systemd
         ;;
     opensuse-tumbleweed)
-        zypper refresh && zypper -q install -y wget curl tar timezone
+        zypper refresh && zypper -q install -y wget curl tar timezone python3-systemd
         ;;
     *)
-        apt-get update && apt install -y -q wget curl tar tzdata
+        apt-get update && apt install -y -q wget curl tar tzdata python3-systemd
         ;;
     esac
 }
@@ -364,7 +364,7 @@ create_iplimit_jails() {
 
     # On Debian 12+ fail2ban's default backend should be changed to systemd
     if [[  "${release}" == "debian" && ${os_version} -ge 12 ]]; then
-        sed -i '0,/action =/s/backend = auto/backend = systemd/' /etc/fail2ban/jail.conf
+        sed -i '0,/action =/s/backend = auto/backend = polling/' /etc/fail2ban/jail.conf
     fi
 
     cat << EOF > /etc/fail2ban/jail.d/3x-ipl.conf
@@ -378,6 +378,8 @@ bantime = ${bantime}m
 port = any
 banaction = 3x-ipl
 protocol = tcp
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=x-ui.service
 EOF
 
     cat << EOF > /etc/fail2ban/filter.d/3x-ipl.conf
