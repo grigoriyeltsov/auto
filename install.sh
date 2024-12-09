@@ -278,22 +278,16 @@ install_x-ui() {
     systemctl enable x-ui
     systemctl start x-ui
 
-    # Directly call the required functions instead of sourcing the entire script
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     
-    # Source the x-ui.sh script but prevent menu display
-    source <(grep -v "^show_menu$" /usr/bin/x-ui)
-    
-    # Install acme.sh
-    install_acme
-    
-    # Install SSL certificate directly using the existing function
-    export DOMAIN="${domain}"  # Export domain for ssl_cert_issue function
-    (ssl_cert_issue)  # Run in subshell to prevent menu display
-    
-    # Wait a moment for certificate installation
-    sleep 5
-    
+    # Execute SSL installation without menu
+    bash /usr/bin/x-ui ssl <<EOF
+1
+${domain}
+80
+y
+EOF
+
     # Check if SSL certificate exists and is valid
     if [ -f "/root/cert/${domain}/fullchain.pem" ] && [ -f "/root/cert/${domain}/privkey.pem" ]; then
         echo -e "${green}SSL certificate installed successfully${plain}"
@@ -310,12 +304,16 @@ install_x-ui() {
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    (install_iplimit)  # Run in subshell to prevent menu display
+    bash /usr/bin/x-ui iplimit <<EOF
+1
+y
+EOF
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    (enable_bbr)  # Run in subshell to prevent menu display
+    bash /usr/bin/x-ui bbr <<EOF
+1
+EOF
     
-    # Final output with correct protocol
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
     echo -e "${green}Username: ${FINAL_USERNAME}${plain}"
