@@ -214,6 +214,210 @@ config_after_install() {
     /usr/local/x-ui/x-ui migrate
 }
 
+install_acme() {
+    if command -v ~/.acme.sh/acme.sh &>/dev/null; then
+        LOGI "acme.sh is already installed."
+        return 0
+    fi
+
+    LOGI "Installing acme.sh..."
+    cd ~ || return 1
+
+    curl -s https://get.acme.sh | sh
+    if [ $? -ne 0 ]; then
+        LOGE "Installation of acme.sh failed."
+        return 1
+    else
+        LOGI "Installation of acme.sh succeeded."
+    fi
+
+    return 0
+}
+
+ssl_cert_issue() {
+    # check for acme.sh first
+    if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+        echo "acme.sh could not be found. we will install it"
+        install_acme
+        if [ $? -ne 0 ]; then
+            LOGE "install acme failed, please check logs"
+            exit 1
+        fi
+    fi
+
+    # install socat second
+    case "${release}" in
+    ubuntu | debian | armbian)
+        apt update && apt install socat -y
+        ;;
+    centos | almalinux | rocky | ol)
+        yum -y update && yum -y install socat
+        ;;
+    fedora | amzn)
+        dnf -y update && dnf -y install socat
+        ;;
+    arch | manjaro | parch)
+        pacman -Sy --noconfirm socat
+        ;;
+    *)
+        echo -e "${red}Unsupported operating system. Please check the script and install the necessary packages manually.${plain}\n"
+        exit 1
+        ;;
+    esac
+    if [ $? -ne 0 ]; then
+        LOGE "install socat failed, please check logs"
+        exit 1
+    else
+        LOGI "install socat succeed..."
+    fi
+
+    # create a directory for the certificate
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    else
+        rm -rf "$certPath"
+        mkdir -p "$certPath"
+    fi
+
+    # issue the certificate
+    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport 80
+    if [ $? -ne 0 ]; then
+        LOGE "Issue certificate failed, please check logs"
+        rm -rf ~/.acme.sh/${domain}
+        exit 1
+    else
+        LOGI "Certificate issued successfully, installing..."
+    fi
+
+    # install the certificate
+    ~/.acme.sh/acme.sh --installcert -d ${domain} \
+        --key-file /root/cert/${domain}/privkey.pem \
+        --fullchain-file /root/cert/${domain}/fullchain.pem
+
+    if [ $? -ne 0 ]; then
+        LOGE "Certificate installation failed, exiting..."
+        rm -rf ~/.acme.sh/${domain}
+        exit 1
+    else
+        LOGI "Certificate installed successfully, enabling auto renew..."
+    fi
+
+    ~/.acme.sh/acme.sh --upgrade --auto-upgrade
+    if [ $? -ne 0 ]; then
+        LOGE "Auto renew setting failed, certificate details:"
+        ls -lah cert/*
+        chmod 755 $certPath/*
+        exit 1
+    else
+        LOGI "Auto renew succeeded, certificate details:"
+        ls -lah cert/*
+        chmod 755 $certPath/*
+    fi
+}
+
+install_iplimit() {
+    if ! command -v fail2ban-client &>/dev/null; then
+        echo -e "${green}Fail2ban is not installed. Installing now...!${plain}\n"
+
+        case "${release}" in
+        ubuntu)
+            if [[ "${os_version}" -ge 24 ]]; then
+                apt update && apt install python3-pip -y
+                python3 -m pip install pyasynchat --break-system-packages
+            fi
+            apt update && apt install fail2ban -y
+            ;;
+        debian | armbian)
+            apt update && apt install fail2ban -y
+            ;;
+        centos | almalinux | rocky | ol)
+            yum update -y && yum install epel-release -y
+            yum -y install fail2ban
+            ;;
+        fedora | amzn)
+            dnf -y update && dnf -y install fail2ban
+            ;;
+        arch | manjaro | parch)
+            pacman -Syu --noconfirm fail2ban
+            ;;
+        *)
+            echo -e "${red}Unsupported operating system. Please check the script and install the necessary packages manually.${plain}\n"
+            exit 1
+            ;;
+        esac
+
+        if ! command -v fail2ban-client &>/dev/null; then
+            echo -e "${red}Fail2ban installation failed.${plain}\n"
+            exit 1
+        fi
+
+        echo -e "${green}Fail2ban installed successfully!${plain}\n"
+    else
+        echo -e "${yellow}Fail2ban is already installed.${plain}\n"
+    fi
+
+    echo -e "${green}Configuring IP Limit...${plain}\n"
+
+    if ! test -f "${iplimit_banned_log_path}"; then
+        touch ${iplimit_banned_log_path}
+    fi
+
+    if ! test -f "${iplimit_log_path}"; then
+        touch ${iplimit_log_path}
+    fi
+
+    create_iplimit_jails
+
+    if ! systemctl is-active --quiet fail2ban; then
+        systemctl start fail2ban
+        systemctl enable fail2ban
+    else
+        systemctl restart fail2ban
+    fi
+    systemctl enable fail2ban
+
+    echo -e "${green}IP Limit installed and configured successfully!${plain}\n"
+}
+
+enable_bbr() {
+    if grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf && grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
+        echo -e "${green}BBR is already enabled!${plain}"
+        exit 0
+    fi
+
+    case "${release}" in
+    ubuntu | debian | armbian)
+        apt-get update && apt-get install -yqq --no-install-recommends ca-certificates
+        ;;
+    centos | almalinux | rocky | ol)
+        yum -y update && yum -y install ca-certificates
+        ;;
+    fedora | amzn)
+        dnf -y update && dnf -y install ca-certificates
+        ;;
+    arch | manjaro | parch)
+        pacman -Sy --noconfirm ca-certificates
+        ;;
+    *)
+        echo -e "${red}Unsupported operating system. Please check the script and install the necessary packages manually.${plain}\n"
+        exit 1
+        ;;
+    esac
+
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+
+    sysctl -p
+
+    if [[ $(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}') == "bbr" ]]; then
+        echo -e "${green}BBR has been enabled successfully.${plain}"
+    else
+        echo -e "${red}Failed to enable BBR. Please check your system configuration.${plain}"
+    fi
+}
+
 install_x-ui() {
     cd /usr/local/
 
@@ -279,66 +483,28 @@ install_x-ui() {
     systemctl start x-ui
 
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
+    install_acme
+    ssl_cert_issue
     
-    # Execute SSL installation
-    (cd /root && curl -s https://get.acme.sh | sh)
-    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport 80
-    
-    if [ $? -eq 0 ]; then
-        # Install certificate
-        ~/.acme.sh/acme.sh --installcert -d ${domain} \
-            --key-file /root/cert/${domain}/privkey.pem \
-            --fullchain-file /root/cert/${domain}/fullchain.pem
+    if [ -f "/root/cert/${domain}/fullchain.pem" ] && [ -f "/root/cert/${domain}/privkey.pem" ]; then
+        echo -e "${green}SSL certificate installed successfully${plain}"
+        FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
         
-        if [ $? -eq 0 ]; then
-            echo -e "${green}SSL certificate installed successfully${plain}"
-            # Set certificate for panel
-            /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
-            
-            # Enable auto-renew
-            ~/.acme.sh/acme.sh --upgrade --auto-upgrade
-            
-            # Store URL with HTTPS
-            FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
-            
-            # Restart panel to apply SSL
-            systemctl restart x-ui
-        else
-            echo -e "${red}Certificate installation failed${plain}"
-            FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
-        fi
+        # Set certificate for panel
+        /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
+        
+        # Restart panel to apply SSL
+        systemctl restart x-ui
     else
-        echo -e "${red}Certificate issuance failed${plain}"
+        echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
         FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    if ! command -v fail2ban-client &>/dev/null; then
-        case "${release}" in
-        ubuntu | debian | armbian)
-            apt update && apt install fail2ban -y
-            ;;
-        centos | almalinux | rocky | ol)
-            yum -y update && yum -y install fail2ban
-            ;;
-        fedora | amzn)
-            dnf -y update && dnf -y install fail2ban
-            ;;
-        *)
-            echo -e "${red}Unsupported operating system${plain}"
-            ;;
-        esac
-    fi
-    systemctl start fail2ban
-    systemctl enable fail2ban
+    install_iplimit
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-        sysctl -p
-    fi
+    enable_bbr
     
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
