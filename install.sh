@@ -280,10 +280,18 @@ install_x-ui() {
 
     # Directly call the required functions instead of sourcing the entire script
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
-    bash /usr/bin/x-ui ssl
+    
+    # Source the x-ui.sh script to get access to its functions
+    source /usr/bin/x-ui
+    
+    # Install acme.sh
+    install_acme
+    
+    # Install SSL certificate directly using the existing function
+    ssl_cert_issue
     
     # Check if SSL certificate exists and is valid
-    if [ -f "/root/.acme.sh/${domain}_ecc/fullchain.cer" ]; then
+    if [ -f "/root/cert/${domain}/fullchain.pem" ]; then
         echo -e "${green}SSL certificate installed successfully${plain}"
         FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
     else
@@ -292,10 +300,10 @@ install_x-ui() {
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    bash /usr/bin/x-ui iplimit
+    install_iplimit
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    bash /usr/bin/x-ui bbr
+    enable_bbr
     
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
