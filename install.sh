@@ -406,11 +406,9 @@ actionban = <iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>
             echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   BAN   [Email] = <F-USER> [IP] = <ip> banned for <bantime> seconds." >> ${iplimit_banned_log_path}
 
 actionunban = <iptables> -D f2b-<name> -s <ip> -j <blocktype>
-              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iptimit_banned_log_path}
+              echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iplimit_banned_log_path}
 
 [Init]
-# Use default settings from iptables-common.conf
-# This will automatically handle both IPv4 and IPv6
 name = default
 protocol = tcp
 chain = INPUT
