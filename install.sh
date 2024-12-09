@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Version 1.0.4 - Fully Automated Installation
+# Version 1.0.5 - Fixed Automatic Installation
 # Changes:
 # - Added automatic domain input at start
 # - Fully automated SSL certificate installation
 # - Added automatic Fail2ban and IP Limit setup
 # - Added automatic BBR installation
+# - Fixed menu prompt issue
 # - Automated panel configuration
 
 red='\033[0;31m'
@@ -365,6 +366,7 @@ install_x-ui() {
     echo -e "x-ui install      - Install"
     echo -e "x-ui uninstall    - Uninstall"
     echo -e "----------------------------------------------"
+    exit 0
 }
 
 add_cron() {
