@@ -281,14 +281,15 @@ install_x-ui() {
     # Directly call the required functions instead of sourcing the entire script
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     
-    # Source the x-ui.sh script to get access to its functions
-    source /usr/bin/x-ui
+    # Source the x-ui.sh script but prevent menu display
+    source <(grep -v "^show_menu$" /usr/bin/x-ui)
     
     # Install acme.sh
     install_acme
     
     # Install SSL certificate directly using the existing function
-    ssl_cert_issue
+    export DOMAIN="${domain}"  # Export domain for ssl_cert_issue function
+    (ssl_cert_issue)  # Run in subshell to prevent menu display
     
     # Wait a moment for certificate installation
     sleep 5
@@ -309,10 +310,10 @@ install_x-ui() {
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    install_iplimit
+    (install_iplimit)  # Run in subshell to prevent menu display
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    enable_bbr
+    (enable_bbr)  # Run in subshell to prevent menu display
     
     # Final output with correct protocol
     echo -e "${green}Installation completed successfully!${plain}"
