@@ -280,37 +280,34 @@ install_x-ui() {
 
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     
-    # Execute SSL installation without menu
-    bash /usr/bin/x-ui ssl <<EOF
+    # Source x-ui.sh for functions
+    source /usr/bin/x-ui
+    
+    # Call SSL installation function
+    ssl_cert_issue_main <<EOF
 1
 ${domain}
 80
 y
 EOF
 
-    # Check if SSL certificate exists and is valid
+    # Check SSL and set final URL
     if [ -f "/root/cert/${domain}/fullchain.pem" ] && [ -f "/root/cert/${domain}/privkey.pem" ]; then
         echo -e "${green}SSL certificate installed successfully${plain}"
         FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
-        
-        # Set certificate for panel
-        /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
-        
-        # Restart panel to apply SSL
-        systemctl restart x-ui
     else
         echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
         FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    bash /usr/bin/x-ui iplimit <<EOF
+    iplimit_main <<EOF
 1
 y
 EOF
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    bash /usr/bin/x-ui bbr <<EOF
+    bbr_menu <<EOF
 1
 EOF
     
