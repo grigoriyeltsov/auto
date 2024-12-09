@@ -280,36 +280,65 @@ install_x-ui() {
 
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     
-    # Source x-ui.sh for functions
-    source /usr/bin/x-ui
+    # Execute SSL installation
+    (cd /root && curl -s https://get.acme.sh | sh)
+    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport 80
     
-    # Call SSL installation function
-    ssl_cert_issue_main <<EOF
-1
-${domain}
-80
-y
-EOF
-
-    # Check SSL and set final URL
-    if [ -f "/root/cert/${domain}/fullchain.pem" ] && [ -f "/root/cert/${domain}/privkey.pem" ]; then
-        echo -e "${green}SSL certificate installed successfully${plain}"
-        FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+    if [ $? -eq 0 ]; then
+        # Install certificate
+        ~/.acme.sh/acme.sh --installcert -d ${domain} \
+            --key-file /root/cert/${domain}/privkey.pem \
+            --fullchain-file /root/cert/${domain}/fullchain.pem
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${green}SSL certificate installed successfully${plain}"
+            # Set certificate for panel
+            /usr/local/x-ui/x-ui cert -webCert "/root/cert/${domain}/fullchain.pem" -webCertKey "/root/cert/${domain}/privkey.pem"
+            
+            # Enable auto-renew
+            ~/.acme.sh/acme.sh --upgrade --auto-upgrade
+            
+            # Store URL with HTTPS
+            FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+            
+            # Restart panel to apply SSL
+            systemctl restart x-ui
+        else
+            echo -e "${red}Certificate installation failed${plain}"
+            FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+        fi
     else
-        echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
+        echo -e "${red}Certificate issuance failed${plain}"
         FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
     fi
     
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    iplimit_main <<EOF
-1
-y
-EOF
+    if ! command -v fail2ban-client &>/dev/null; then
+        case "${release}" in
+        ubuntu | debian | armbian)
+            apt update && apt install fail2ban -y
+            ;;
+        centos | almalinux | rocky | ol)
+            yum -y update && yum -y install fail2ban
+            ;;
+        fedora | amzn)
+            dnf -y update && dnf -y install fail2ban
+            ;;
+        *)
+            echo -e "${red}Unsupported operating system${plain}"
+            ;;
+        esac
+    fi
+    systemctl start fail2ban
+    systemctl enable fail2ban
 
     echo -e "${yellow}Starting BBR installation...${plain}"
-    bbr_menu <<EOF
-1
-EOF
+    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
+        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+        sysctl -p
+    fi
     
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
