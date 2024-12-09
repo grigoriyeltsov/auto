@@ -282,6 +282,15 @@ install_x-ui() {
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
     bash /usr/bin/x-ui ssl
     
+    # Check if SSL certificate exists and is valid
+    if [ -f "/root/.acme.sh/${domain}_ecc/fullchain.cer" ]; then
+        echo -e "${green}SSL certificate installed successfully${plain}"
+        FINAL_URL="https://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+    else
+        echo -e "${yellow}SSL certificate not installed, using HTTP${plain}"
+        FINAL_URL="http://${domain}:${FINAL_PORT}/${FINAL_PATH}"
+    fi
+    
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
     bash /usr/bin/x-ui iplimit
 
@@ -289,7 +298,7 @@ install_x-ui() {
     bash /usr/bin/x-ui bbr
     
     echo -e "${green}Installation completed successfully!${plain}"
-    echo -e "${green}Panel is running at https://${domain}:${FINAL_PORT}/${FINAL_PATH}${plain}"
+    echo -e "${green}Panel is running at ${FINAL_URL}${plain}"
     echo -e "${green}Username: ${FINAL_USERNAME}${plain}"
     echo -e "${green}Password: ${FINAL_PASSWORD}${plain}"
     echo -e "${yellow}If you forgot your login info, you can type 'x-ui settings' to check${plain}"
