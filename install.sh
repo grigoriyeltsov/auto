@@ -272,21 +272,15 @@ install_x-ui() {
     systemctl enable x-ui
     systemctl start x-ui
 
-    # Загружаем функции из x-ui.sh
-    # source <(curl -sL https://raw.githubusercontent.com/flipikme/3x-ui/main/x-ui.sh)
-    source <(curl -sL https://raw.githubusercontent.com/grigoriyeltsov/3x-ui/main/x-ui.sh)
-
-    # Устанавливаем SSL
+    # Directly call the required functions instead of sourcing the entire script
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
-    ssl_cert_issue
-
-    # Устанавливаем Fail2ban
+    bash /usr/bin/x-ui ssl
+    
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    install_iplimit
+    bash /usr/bin/x-ui iplimit
 
-    # Устанавливаем BBR
     echo -e "${yellow}Starting BBR installation...${plain}"
-    enable_bbr
+    bash /usr/bin/x-ui bbr
     
     echo -e "${green}Installation completed successfully!${plain}"
     echo -e "${green}Panel is running at https://${domain}:${config_port}/${config_webBasePath}${plain}"
