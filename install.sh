@@ -607,10 +607,6 @@ cleanup_system() {
     rm -f /etc/systemd/system/x-ui.service
     rm -rf /etc/x-ui/
     
-    # Remove certificates
-    rm -rf /root/.acme.sh/
-    rm -rf /root/cert/
-    
     # Remove fail2ban
     case "${release}" in
     ubuntu | debian | armbian)
@@ -637,6 +633,11 @@ cleanup_system() {
     systemctl daemon-reload
     
     echo -e "${green}System cleaned up successfully${plain}"
+    
+    # If certificates exist, inform user
+    if [ -d "/root/cert" ] || [ -d "/root/.acme.sh" ]; then
+        echo -e "${yellow}Note: SSL certificates were preserved${plain}"
+    fi
 }
 
 install_x-ui() {
