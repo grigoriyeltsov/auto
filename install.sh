@@ -1,13 +1,11 @@
 #!/bin/bash
 
-# Version 1.0.5 - Fixed Automatic Installation
+# Version 1.0.9 - Sequential Installation
 # Changes:
 # - Added automatic domain input at start
-# - Fully automated SSL certificate installation
-# - Added automatic Fail2ban and IP Limit setup
-# - Added automatic BBR installation
-# - Fixed menu prompt issue
-# - Automated panel configuration
+# - Sequential installation process
+# - Using existing functions from x-ui.sh
+# - Automated full configuration
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -210,66 +208,6 @@ config_after_install() {
     /usr/local/x-ui/x-ui migrate
 }
 
-# Функция для автоматической установки SSL сертификата
-auto_ssl_cert_issue() {
-    local webport=80
-    
-    # Устанавливаем acme.sh если его нет
-    if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
-        curl -s https://get.acme.sh | sh
-    fi
-
-    # Устанавливаем socat
-    case "${release}" in
-    ubuntu | debian | armbian)
-        apt update && apt install socat -y
-        ;;
-    centos | almalinux | rocky | ol)
-        yum -y update && yum -y install socat
-        ;;
-    fedora | amzn)
-        dnf -y update && dnf -y install socat
-        ;;
-    arch | manjaro | parch)
-        pacman -Sy --noconfirm socat
-        ;;
-    esac
-
-    # Создаем директорию для сертификатов
-    certPath="/root/cert/${domain}"
-    if [ ! -d "$certPath" ]; then
-        mkdir -p "$certPath"
-    else
-        rm -rf "$certPath"
-        mkdir -p "$certPath"
-    fi
-
-    # Получаем сертификат
-    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport ${webport}
-
-    # Устанавливаем сертификат
-    ~/.acme.sh/acme.sh --installcert -d ${domain} \
-        --key-file /root/cert/${domain}/privkey.pem \
-        --fullchain-file /root/cert/${domain}/fullchain.pem
-
-    # Включаем автообновление
-    ~/.acme.sh/acme.sh --upgrade --auto-upgrade
-
-    # Автоматически устанавливаем сертификат для панели
-    local webCertFile="/root/cert/${domain}/fullchain.pem"
-    local webKeyFile="/root/cert/${domain}/privkey.pem"
-
-    if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
-        /usr/local/x-ui/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
-        echo -e "${green}SSL certificate installed successfully${plain}"
-        echo -e "${green}Certificate path: ${webCertFile}${plain}"
-        echo -e "${green}Private key path: ${webKeyFile}${plain}"
-        systemctl restart x-ui
-    fi
-}
-
-# Модифицируем основную функцию установки
 install_x-ui() {
     cd /usr/local/
 
@@ -333,40 +271,28 @@ install_x-ui() {
     systemctl daemon-reload
     systemctl enable x-ui
     systemctl start x-ui
-    
-    # Устанавливаем SSL сертификат используя нашу автоматическую функцию
+
+    # Загружаем функции из x-ui.sh
+    # source <(curl -sL https://raw.githubusercontent.com/flipikme/3x-ui/main/x-ui.sh)
+    source <(curl -sL https://raw.githubusercontent.com/grigoriyeltsov/3x-ui/main/x-ui.sh)
+
+    # Устанавливаем SSL
     echo -e "${yellow}Starting SSL certificate installation...${plain}"
-    source /usr/bin/x-ui
-    auto_ssl_cert_issue
+    ssl_cert_issue
 
-    # Автоматическая установка Fail2ban и IP Limit
+    # Устанавливаем Fail2ban
     echo -e "${yellow}Starting Fail2ban and IP Limit installation...${plain}"
-    iplimit_main 1
+    install_iplimit
 
-    # Автоматическая установка BBR
+    # Устанавливаем BBR
     echo -e "${yellow}Starting BBR installation...${plain}"
     enable_bbr
     
-    echo -e "${green}x-ui ${tag_version}${plain} installation finished, it is running now..."
-    echo -e "x-ui control menu usages: "
-    echo -e "----------------------------------------------"
-    echo -e "SUBCOMMANDS:"
-    echo -e "x-ui              - Admin Management Script"
-    echo -e "x-ui start        - Start"
-    echo -e "x-ui stop         - Stop"
-    echo -e "x-ui restart      - Restart"
-    echo -e "x-ui status       - Current Status"
-    echo -e "x-ui settings     - Current Settings"
-    echo -e "x-ui enable       - Enable Autostart on OS Startup"
-    echo -e "x-ui disable      - Disable Autostart on OS Startup"
-    echo -e "x-ui log          - Check logs"
-    echo -e "x-ui banlog       - Check Fail2ban ban logs"
-    echo -e "x-ui update       - Update"
-    echo -e "x-ui custom       - custom version"
-    echo -e "x-ui install      - Install"
-    echo -e "x-ui uninstall    - Uninstall"
-    echo -e "----------------------------------------------"
-    exit 0
+    echo -e "${green}Installation completed successfully!${plain}"
+    echo -e "${green}Panel is running at https://${domain}:${config_port}/${config_webBasePath}${plain}"
+    echo -e "${green}Username: ${config_username}${plain}"
+    echo -e "${green}Password: ${config_password}${plain}"
+    echo -e "${yellow}If you forgot your login info, you can type 'x-ui settings' to check${plain}"
 }
 
 add_cron() {
