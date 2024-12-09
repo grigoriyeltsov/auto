@@ -312,30 +312,51 @@ ssl_cert_issue() {
     certPath="/root/cert/${domain}"
     if [ ! -d "$certPath" ]; then
         mkdir -p "$certPath"
-    else
-        rm -rf "$certPath"
-        mkdir -p "$certPath"
+    fi
+
+    # Check if certificate already exists and is valid
+    if [ -f "${certPath}/fullchain.pem" ] && [ -f "${certPath}/privkey.pem" ]; then
+        echo -e "${yellow}Certificate files already exist. Checking validity...${plain}"
+        
+        # Check certificate expiration
+        if openssl x509 -checkend 2592000 -noout -in "${certPath}/fullchain.pem"; then
+            echo -e "${green}Existing certificate is valid for at least 30 days. Using existing certificate.${plain}"
+            return 0
+        else
+            echo -e "${yellow}Existing certificate will expire soon. Attempting to renew...${plain}"
+            rm -rf "$certPath"
+            mkdir -p "$certPath"
+        fi
     fi
 
     # issue the certificate
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
     ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport 80
     if [ $? -ne 0 ]; then
+        echo -e "${yellow}Certificate issue failed. Checking for rate limit...${plain}"
+        if [ -f "/root/.acme.sh/${domain}_ecc/fullchain.cer" ]; then
+            echo -e "${green}Found existing certificate in acme.sh directory. Using it...${plain}"
+            ~/.acme.sh/acme.sh --installcert -d ${domain} \
+                --key-file ${certPath}/privkey.pem \
+                --fullchain-file ${certPath}/fullchain.pem
+            if [ $? -eq 0 ]; then
+                echo -e "${green}Certificate installed successfully from existing acme.sh certificate${plain}"
+                return 0
+            fi
+        fi
         LOGE "Issue certificate failed, please check logs"
-        rm -rf ~/.acme.sh/${domain}
+        rm -rf ~/.acme.sh/${domain}_ecc
         exit 1
-    else
-        LOGI "Certificate issued successfully, installing..."
     fi
 
     # install the certificate
     ~/.acme.sh/acme.sh --installcert -d ${domain} \
-        --key-file /root/cert/${domain}/privkey.pem \
-        --fullchain-file /root/cert/${domain}/fullchain.pem
+        --key-file ${certPath}/privkey.pem \
+        --fullchain-file ${certPath}/fullchain.pem
 
     if [ $? -ne 0 ]; then
         LOGE "Certificate installation failed, exiting..."
-        rm -rf ~/.acme.sh/${domain}
+        rm -rf ~/.acme.sh/${domain}_ecc
         exit 1
     else
         LOGI "Certificate installed successfully, enabling auto renew..."
@@ -573,7 +594,55 @@ EOF
     echo -e "${green}Subscription URL: https://${domain}:${port}/${sub_path}${plain}"
 }
 
+cleanup_system() {
+    echo -e "${yellow}Cleaning up system before installation...${plain}"
+    
+    # Stop services
+    systemctl stop x-ui 2>/dev/null
+    systemctl stop fail2ban 2>/dev/null
+    
+    # Remove x-ui
+    rm -rf /usr/local/x-ui/
+    rm -rf /usr/bin/x-ui
+    rm -f /etc/systemd/system/x-ui.service
+    rm -rf /etc/x-ui/
+    
+    # Remove certificates
+    rm -rf /root/.acme.sh/
+    rm -rf /root/cert/
+    
+    # Remove fail2ban
+    case "${release}" in
+    ubuntu | debian | armbian)
+        apt-get remove -y fail2ban
+        apt-get purge -y fail2ban
+        apt-get autoremove -y
+        ;;
+    centos | almalinux | rocky | ol)
+        yum remove fail2ban -y
+        yum autoremove -y
+        ;;
+    fedora | amzn)
+        dnf remove fail2ban -y
+        dnf autoremove -y
+        ;;
+    arch | manjaro | parch)
+        pacman -Rns --noconfirm fail2ban
+        ;;
+    esac
+    
+    rm -rf /etc/fail2ban/
+    
+    # Reload systemd
+    systemctl daemon-reload
+    
+    echo -e "${green}System cleaned up successfully${plain}"
+}
+
 install_x-ui() {
+    # Clean up system first
+    cleanup_system
+    
     cd /usr/local/
 
     if [ $# == 0 ]; then
